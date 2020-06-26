@@ -275,9 +275,11 @@ final class ShuffleBlockFetcherIterator(
     val remoteRequests = new ArrayBuffer[FetchRequest]
 
     for ((address, blockInfos) <- blocksByAddress) {
+      // Here, we must have some blocks whose size is negative, no matter where they came from
       if (address.executorId == blockManager.blockManagerId.executorId) {
         blockInfos.find(_._2 <= 0) match {
           case Some((blockId, size)) if size < 0 =>
+            // we get here sometimes
             throw new BlockException(blockId, "Negative block size " + size)
           case Some((blockId, size)) if size == 0 =>
             throw new BlockException(blockId, "Zero-sized blocks should be excluded.")
@@ -292,6 +294,7 @@ final class ShuffleBlockFetcherIterator(
         while (iterator.hasNext) {
           val (blockId, size) = iterator.next()
           if (size < 0) {
+            // we get here somtimes
             throw new BlockException(blockId, "Negative block size " + size)
           } else if (size == 0) {
             throw new BlockException(blockId, "Zero-sized blocks should be excluded.")

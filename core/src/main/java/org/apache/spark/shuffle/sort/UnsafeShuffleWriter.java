@@ -242,12 +242,18 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
+      // This method can change the partitionLengths if it finds an existing cached version or something
+      // this also interacts with the block manager and external shuffle service. could be the smoking gun
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
       }
     }
+    // This ugly shit is from scala `object`s. Scala objects use the singleton pattern in java, where
+    // object MapStatus makes a final class MapStatus and MapStatus$, and MapStatus$.MODULE$ is the singleton
+    // MapStatus instance. Scala automatically handles this. Because this is java code using a scala object,
+    // this MapStatus$.MODULE$.apply(.) is required to do the equivalent of MapStatus(.) in scala.
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
   }
 

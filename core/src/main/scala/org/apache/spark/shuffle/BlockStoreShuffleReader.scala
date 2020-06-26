@@ -46,6 +46,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       context,
       blockManager.shuffleClient,
       blockManager,
+      // This call returns some blocks with negative sizes, both local and remote.
       mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),
       serializerManager.wrapStream,
       // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility

@@ -97,6 +97,8 @@ private[spark] class IndexShuffleBlockResolver(
     }
     try {
       // Convert the offsets into lengths of each block
+      // If this file is corrupted in the External Shuffle Service, it could cause negative block sizes
+      // Still TBD how the negative sizes can actually propagate, but it's a start.
       var offset = in.readLong()
       if (offset != 0L) {
         return null
@@ -116,6 +118,7 @@ private[spark] class IndexShuffleBlockResolver(
     }
 
     // the size of data file should match with index file
+    // This is unlikely to match if there's corruption though
     if (data.length() == lengths.sum) {
       lengths
     } else {
@@ -149,6 +152,8 @@ private[spark] class IndexShuffleBlockResolver(
         if (existingLengths != null) {
           // Another attempt for the same task has already written our map outputs successfully,
           // so just use the existing partition lengths and delete our temporary map outputs.
+
+          // This method can modify `lengths`. Not obvious and could be part of the buggy path.
           System.arraycopy(existingLengths, 0, lengths, 0, lengths.length)
           if (dataTmp != null && dataTmp.exists()) {
             dataTmp.delete()

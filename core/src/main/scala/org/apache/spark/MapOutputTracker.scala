@@ -688,6 +688,7 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
     logDebug(s"Fetching outputs for shuffle $shuffleId, partitions $startPartition-$endPartition")
     val statuses = getStatuses(shuffleId)
     try {
+      // Here we return some blocks with negative size
       MapOutputTracker.convertMapStatuses(shuffleId, startPartition, endPartition, statuses)
     } catch {
       case e: MetadataFetchFailedException =>
@@ -882,7 +883,9 @@ private[spark] object MapOutputTracker extends Logging {
         throw new MetadataFetchFailedException(shuffleId, startPartition, errorMessage)
       } else {
         for (part <- startPartition until endPartition) {
+          // This sometimes returns a negative size
           val size = status.getSizeForBlock(part)
+          // No check on negative sizes, only zero...
           if (size != 0) {
             splitsByAddress.getOrElseUpdate(status.location, ListBuffer()) +=
                 ((ShuffleBlockId(shuffleId, mapId, part), size))
