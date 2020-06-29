@@ -150,6 +150,7 @@ private[spark] class HighlyCompressedMapStatus private (
     private[this] var loc: BlockManagerId,
     private[this] var numNonEmptyBlocks: Int,
     private[this] var emptyBlocks: RoaringBitmap,
+    // The only way this can be negative is by deserialization with Externalizable or with Kryo FieldSerializer
     private[this] var avgSize: Long,
     private var hugeBlockSizes: Map[Int, Byte])
   extends MapStatus with Externalizable {
@@ -209,6 +210,7 @@ private[spark] class HighlyCompressedMapStatus private (
 }
 
 private[spark] object HighlyCompressedMapStatus {
+  // We can't get Long.MinValue as the avg size here.
   def apply(loc: BlockManagerId, uncompressedSizes: Array[Long]): HighlyCompressedMapStatus = {
     // We must keep track of which blocks are empty so that we don't report a zero-sized
     // block as being non-empty (or vice-versa) when using the average block size.
@@ -250,6 +252,11 @@ private[spark] object HighlyCompressedMapStatus {
       // overflow to get that way.
       // Since we always see Long.MinValue, the overflow condition would be very specific (likely Long.MaxValue + 1).
       // IMO this is unlikely.
+
+      // So actually since we divide by numSmallBlocks, we can't get Long.MinValue by overflow. In fact, we'd need
+      // numSmallBlocks to be 1 or -1.
+      // numSmallBlocks can't be -1 unless it overflows which is impossible.
+      // So numSmallBlocks = 1 and totalSmallBlockSize = Long.MinValue, which is also impossible.
       totalSmallBlockSize / numSmallBlocks
     } else {
       0
