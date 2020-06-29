@@ -430,6 +430,23 @@ private[serializer] object KryoSerializer {
     ByteBuffer.allocate(1).getClass,
     classOf[StorageLevel],
     classOf[CompressedMapStatus],
+    // This registers with FieldSerializer:
+    /*
+      scala> val conf = sc.getConf
+      conf: org.apache.spark.SparkConf = org.apache.spark.SparkConf@3ef46749
+
+      scala> import org.apache.spark.serializer.KryoSerializer
+      import org.apache.spark.serializer.KryoSerializer
+
+      scala> val kryo = new KryoSerializer(conf).newKryo
+      kryo: com.esotericsoftware.kryo.Kryo = com.twitter.chill.KryoBase@484a5ddd
+
+      scala> kryo.getRegistration(13)
+      res0: com.esotericsoftware.kryo.Registration = [13, org.apache.spark.scheduler.HighlyCompressedMapStatus]
+
+      scala> kryo.getRegistration(13).getSerializer
+      res1: com.esotericsoftware.kryo.Serializer[_] = com.esotericsoftware.kryo.serializers.FieldSerializer@7b38db21
+     */
     classOf[HighlyCompressedMapStatus],
     classOf[CompactBuffer[_]],
     classOf[BlockManagerId],

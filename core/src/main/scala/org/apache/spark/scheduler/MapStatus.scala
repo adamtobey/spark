@@ -151,6 +151,9 @@ private[spark] class HighlyCompressedMapStatus private (
     private[this] var numNonEmptyBlocks: Int,
     private[this] var emptyBlocks: RoaringBitmap,
     // The only way this can be negative is by deserialization with Externalizable or with Kryo FieldSerializer
+    // This class is registered with Kryo, so it actually won't use the readExternal/writeExternal methods for
+    // serialization. See the comment in KryoSerializer.scala.
+    // It's possible the FieldSerializer sets this field incorrectly or there's corruption in the serialized data.
     private[this] var avgSize: Long,
     private var hugeBlockSizes: Map[Int, Byte])
   extends MapStatus with Externalizable {
@@ -193,7 +196,7 @@ private[spark] class HighlyCompressedMapStatus private (
     loc = BlockManagerId(in)
     emptyBlocks = new RoaringBitmap()
     emptyBlocks.readExternal(in)
-    // It's likely this is where the negative number comes from. The question is, how does it get this way?
+    // It's possible this is where the negative number comes from. The question is, how does it get this way?
     // If it's random corruption, we wouldn't likely see the same value every time. Not to mention other
     // deserialization steps would eventually fail, e.g. the bitmap would be invalid or the counts below
     // would read off the end of the buffer.
@@ -228,6 +231,8 @@ private[spark] object HighlyCompressedMapStatus {
       .getOrElse(config.SHUFFLE_ACCURATE_BLOCK_THRESHOLD.defaultValue.get)
     val hugeBlockSizesArray = ArrayBuffer[Tuple2[Int, Byte]]()
     while (i < totalNumBlocks) {
+      // Even if uncompressedSizes is being concurrent modified, size is copied so the compare and update below
+      // is consistent.
       val size = uncompressedSizes(i)
       if (size > 0) {
         numNonEmptyBlocks += 1
@@ -239,6 +244,8 @@ private[spark] object HighlyCompressedMapStatus {
           totalSmallBlockSize += size
           numSmallBlocks += 1
         } else {
+          // here, concurrent modification could invalidate the comparisons above, but compressed sizes can't
+          // be negative.
           hugeBlockSizesArray += Tuple2(i, MapStatus.compressSize(uncompressedSizes(i)))
         }
       } else {
@@ -248,15 +255,11 @@ private[spark] object HighlyCompressedMapStatus {
     }
     // This is where the avg size is calculated before serialization. This may be neg
     val avgSize = if (numSmallBlocks > 0) {
-      // Since numSmallBlocks > 0, if avgSize is negative, totalSmallBlockSize is negative. It would have to
-      // overflow to get that way.
-      // Since we always see Long.MinValue, the overflow condition would be very specific (likely Long.MaxValue + 1).
-      // IMO this is unlikely.
-
-      // So actually since we divide by numSmallBlocks, we can't get Long.MinValue by overflow. In fact, we'd need
-      // numSmallBlocks to be 1 or -1.
-      // numSmallBlocks can't be -1 unless it overflows which is impossible.
-      // So numSmallBlocks = 1 and totalSmallBlockSize = Long.MinValue, which is also impossible.
+      // Since we divide by numSmallBlocks, we can't get Long.MinValue by overflow. In fact, we'd need
+      // numSmallBlocks to be 1 and totalSmallBlockSize to be Long.MinValue.
+      // numSmallBlocks=-1 doesn't work (and isn't possible) since Long.MinValue < -Long.MaxValue.
+      // Due to order of operations here, if abs(numSmallBlocks) > 1, abs(avgSize) < -Long.MinValue / 2.
+      // numSmallBlocks = 1 and totalSmallBlockSize = Long.MinValue is impossible, so avgSize can't be Long.MinValue.
       totalSmallBlockSize / numSmallBlocks
     } else {
       0
